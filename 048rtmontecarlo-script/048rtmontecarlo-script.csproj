@@ -264,6 +264,15 @@
     <Compile Include="..\common\WorkloadDistribution.cs">
       <Link>WorkloadDistribution.cs</Link>
     </Compile>
+    <Compile Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\MarchingCubes.cs">
+      <Link>FR\MarchingCubes.cs</Link>
+    </Compile>
+    <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\RandomVolumeScene.cs">
+      <Link>FR\RandomVolumeScene.cs</Link>
+    </None>
+    <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\SphereVolumeScene.cs">
+      <Link>FR\SphereVolumeScene.cs</Link>
+    </None>
     <Compile Include="AdditionalViewsForm.cs">
       <SubType>Form</SubType>
     </Compile>

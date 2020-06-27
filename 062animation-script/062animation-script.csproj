@@ -183,6 +183,21 @@
     <Compile Include="..\common\WorkloadDistributionDummy.cs">
       <Link>WorkloadDistributionDummy.cs</Link>
     </Compile>
+    <Compile Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\Fire.cs">
+      <Link>FR\Fire.cs</Link>
+    </Compile>
+    <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\FireScene.cs">
+      <Link>FR\FireScene.cs</Link>
+    </None>
+    <Compile Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\MarchingCubes.cs">
+      <Link>FR\MarchingCubes.cs</Link>
+    </Compile>
+    <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\RandomVolumeScene.cs">
+      <Link>FR\RandomVolumeScene.cs</Link>
+    </None>
+    <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\SphereVolumeScene.cs">
+      <Link>FR\SphereVolumeScene.cs</Link>
+    </None>
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>

@@ -11,7 +11,7 @@ context[PropertyName.CTX_WIDTH]         = 640; // 1800, 1920
 context[PropertyName.CTX_HEIGHT]        = 480; // 1200, 1080
 //context[PropertyName.CTX_SUPERSAMPLING] =   4; //  400,   64
 
-// Tooltip (if script uses values from 'param').s
+// Tooltip (if script uses values from 'param').
 context[PropertyName.CTX_TOOLTIP] = "n=<double> (index of refraction)\rschlick=<double> (Schlick coeff)\rmat={mirror|glass|diffuse}}";
 
 // Params dictionary.
@@ -74,9 +74,8 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // --- NODE DEFINITIONS ----------------------------------------------------
 
 // Transparent/mirror/diffuse sphere.
-MarchingCubes f;
-f = new MarchingCubes(20, 20, 20);
-f.Sphere();
+Fire f = new Fire(50, 50, 50);
+f.CloudsRandomize(5);
 pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0, 16, sch);
 f.SetAttribute(PropertyName.MATERIAL, pm);
 root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
