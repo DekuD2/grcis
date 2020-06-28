@@ -74,9 +74,9 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // --- NODE DEFINITIONS ----------------------------------------------------
 
 // Transparent/mirror/diffuse sphere.
-Fire f = new Fire(50, 50, 50);
+Fire f = new Fire(20, 20, 20);
 f.CloudsRandomize(5);
-pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0, 16, sch);
+pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch);
 f.SetAttribute(PropertyName.MATERIAL, pm);
 root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
 

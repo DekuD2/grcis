@@ -25,11 +25,25 @@ namespace FilipRechtorik
   [Serializable]
   public class Fire : DefaultSceneNode, ISolid
   {
+    public enum Mode { Fire, Solid };
+
+    public Mode RenderMode = Mode.Fire;
+
+    static Stopwatch distSw = new Stopwatch();
+
     float[,,] volume;
 
-    public int Sx => volume.GetLength(0);
-    public int Sy => volume.GetLength(1);
-    public int Sz => volume.GetLength(2);
+    // Size in each direction
+    public int Sx { get; }
+    public int Sy { get; }
+    public int Sz { get; }
+
+    // Inverse size (to avoid division later on)
+    public float ISx { get; } // 1 / (Sx - 1) ...
+    public float ISy { get; }
+    public float ISz { get; }
+
+    int maxDim;
 
     // Determines the value treshold that creates the sphere
     public float Threshold = 0.5f;
@@ -43,8 +57,56 @@ namespace FilipRechtorik
     public Fire (int sx, int sy, int sz)
     {
       volume = new float[sx, sy, sz];
-      int maxDim = Math.Max(sx, Math.Max(sy, sz));
+      maxDim = Math.Max(sx, Math.Max(sy, sz));
       epsilon = 0.01 / maxDim;
+
+      Sx = sx;
+      Sy = sy;
+      Sz = sz;
+      ISx = 1 / (Sx - 1f);
+      ISy = 1 / (Sy - 1f);
+      ISz = 1 / (Sz - 1f);
+    }
+
+    // Input: coordinates 0-1
+    public double Sample (double x, double y, double z)
+    {
+      // Scale to grid
+      x *= (Sx - 1);
+      y *= (Sy - 1);
+      z *= (Sz - 1);
+
+      // Lower coordinates in the texture
+      int lx = (int)x;
+      int ly = (int)y;
+      int lz = (int)z;
+
+      // Uper coordinates
+      int ux = lx + 1;
+      int uy = ly + 1;
+      int uz = lz + 1;
+
+      // Proportions from current to next value
+      double px = x - lx;
+      double py = y - ly;
+      double pz = z - lz;
+
+      // Inverse proportions
+      double ipx = 1 - px;
+      double ipy = 1 - py;
+      double ipz = 1 - pz;
+
+      double value =
+        volume[lx, ly, lz] * ipx * ipy * ipz +
+        volume[lx, ly, uz] * ipx * ipy * pz +
+        volume[lx, uy, lz] * ipx * py * ipz +
+        volume[lx, uy, uz] * ipx * py * pz +
+        volume[ux, ly, lz] * px * ipy * ipz +
+        volume[ux, ly, uz] * px * ipy * pz +
+        volume[ux, uy, lz] * px * py * ipz +
+        volume[ux, uy, uz] * px * py * pz;
+
+      return value;
     }
 
     public void CloudsRandomize (int numPoints = 15)
@@ -59,7 +121,7 @@ namespace FilipRechtorik
         for (int j = 0; j < Sy; j++)
           for (int k = 0; k < Sz; k++)
           {
-            Vector3 curr = new Vector3(i / (Sx - 1f), j / (Sy - 1f), k / (Sz - 1f));
+            Vector3 curr = new Vector3(i * ISx, j * ISy, k * ISz);
 
             // Find the distance to the closest point
             float min = float.MaxValue;
@@ -110,6 +172,40 @@ namespace FilipRechtorik
               MaxT = 50000
             };
       yield break;
+    }
+
+    double FindStart (Vector3d p0, Vector3d p1)
+    {
+      Vector3d gridPos = new Vector3d((p0.X + 0.5) * (Sx - 1), (p0.Y + 0.5) * (Sy - 1), (p0.Z + 0.5) * (Sz - 1));
+      Vector3d gridDir = new Vector3d(p1.X * (Sx - 1), p1.Y * (Sy - 1), p1.Z * (Sz - 1));
+
+      double dx = 0; // distance of x to get into the cube "X" region (between X = -0.5 and X = 0.5 parallel planes)
+      double dy = 0;
+      double dz = 0;
+
+      // Add some epsilon to get inside the grid and not stay on the edge
+      // Before I did this, I would end up on the edge of the cube, sometimes on the wrong side due to numerical imprecision, and that would create a noise effect.
+      double e = 0.1;
+      if (gridPos.X > (Sx - 1) && gridDir.X < 0)
+        dx = (Sx - 1) - gridPos.X - e;
+      else if (gridPos.X < 0 && gridDir.X > 0)
+        dx = -gridPos.X + e;
+
+      if (gridPos.Y > (Sy - 1) && gridDir.Y < 0)
+        dy = (Sy - 1) - gridPos.Y - e;
+      else if (gridPos.Y < 0 && gridDir.Y > 0)
+        dy = -gridPos.Y + e;
+
+      if (gridPos.Z > (Sz - 1) && gridDir.Z < 0)
+        dz = (Sz - 1) - gridPos.Z - e;
+      else if (gridPos.Z < 0 && gridDir.Z > 0)
+        dz = -gridPos.Z + e;
+
+      double t = dx / gridDir.X; // > 0 since both have same sign
+      t = Math.Max(t, dy / gridDir.Y);
+      t = Math.Max(t, dz / gridDir.Z);
+
+      return t;
     }
 
     /// <param name="gridPos">Ray position in the grid space, where (0,0,0) and (cellsX, cellsY, cellsZ) are corners the grid.</param>
@@ -223,7 +319,7 @@ namespace FilipRechtorik
       }
     }
 
-    bool IntersectCell (LinkedList<Intersection> result, Vector3d p0, Vector3d p1, CellRayIntersection cell)
+    bool IntersectCellSolid (LinkedList<Intersection> result, Vector3d p0, Vector3d p1, CellRayIntersection cell)
     {
       double SphereDist (Vector3d point, Vector3d corner, double radius)
       {
@@ -241,9 +337,9 @@ namespace FilipRechtorik
         diff *= len;
 
         // Convert back to spheroid
-        diff.X /= (Sx - 1);
-        diff.Y /= (Sy - 1);
-        diff.Z /= (Sz - 1);
+        diff.X *= ISx;
+        diff.Y *= ISy;
+        diff.Z *= ISz;
 
         // Return the actual length of the vector from edge of the sphere to the point
         return diff.Length;
@@ -259,7 +355,7 @@ namespace FilipRechtorik
         r -= Threshold;
         if (r > 0)
         {
-          Vector3d corner = new Vector3d(-0.5) + new Vector3d(cx / (Sx - 1d), cy / (Sy - 1d), cz / (Sz - 1d));
+          Vector3d corner = new Vector3d(-0.5) + new Vector3d(cx * ISx, cy * ISy, cz * ISz);
           double radius = MinRadius + (MaxRadius - MinRadius) * r / (1 - Threshold);
           return SphereDist(point, corner, radius);
         }
@@ -276,12 +372,14 @@ namespace FilipRechtorik
         return distances.Min();
       }
 
-      double Dist (Vector3d point)
+      // blendRange of 1 = just the cube around the point.
+      // blend range of 2 = 9 cubes around the point
+      double Dist (Vector3d point, int blendRange = 2)
       {
         List<double> distances = new List<double>();
-        for (int i = -1; i <= 2; i++)
-          for (int j = -1; j <= 2; j++)
-            for (int k = -1; k <= 2; k++)
+        for (int i = 1 - blendRange; i <= blendRange; i++)
+          for (int j = 1 - blendRange; j <= blendRange; j++)
+            for (int k = 1 - blendRange; k <= blendRange; k++)
             {
               double? dist = CornerDist(point, cell.Cx + i, cell.Cy + j, cell.Cz + k);
               if (dist != null)
@@ -296,9 +394,11 @@ namespace FilipRechtorik
 
       Vector3d ApproximateNormal (Vector3d point)
       {
-        return new Vector3d(Dist(new Vector3d(point.X + epsilon, point.Y, point.Z)) - Dist(new Vector3d(point.X - epsilon, point.Y, point.Z)),
+        // Use quicker distance (less blending) for normals, since I have to calculate this value 6 times...
+        var res = new Vector3d(Dist(new Vector3d(point.X + epsilon, point.Y, point.Z)) - Dist(new Vector3d(point.X - epsilon, point.Y, point.Z)),
                             Dist(new Vector3d(point.X, point.Y + epsilon, point.Z)) - Dist(new Vector3d(point.X, point.Y - epsilon, point.Z)),
                             Dist(new Vector3d(point.X, point.Y, point.Z + epsilon)) - Dist(new Vector3d(point.X, point.Y, point.Z - epsilon)));
+        return res;
       }
 
       double t = cell.MinT;
@@ -313,11 +413,13 @@ namespace FilipRechtorik
         {
           var intersection = new Intersection(this)
           {
-            T = t + dist,
+            T = t,
             Enter = true,
             Front = true,
             NormalLocal = ApproximateNormal(currPoint),
             CoordLocal = currPoint,
+            Material = new PhongMaterial(new double[]{ 1, 0, 0 }, 0.3, 0.4, 0.3, 128), //currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5
+            SurfaceColor = new double[]{ currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5 }
           };
 
           result.AddLast(intersection);
@@ -331,16 +433,73 @@ namespace FilipRechtorik
       return false;
     }
 
+    void IntersectFire (LinkedList<Intersection> result, Vector3d p0, Vector3d p1)
+    {
+      // How many lines?
+      double t = FindStart(p0, p1);
+      double step = 1d / (maxDim * p1.Length);
+      double stepSize = step * p1.Length;
+
+      bool IsInside (Vector3d point)
+      {
+        return
+          point.X >= -0.5 && point.Y >= -0.5 && point.Z >= -0.5 &&
+          point.X <= 0.5 && point.Y <= 0.5 && point.Z <= 0.5;
+      }
+
+      double[] flame0 = new double[]{ 89 / 255d, 22 / 255d, 3 / 255d };
+      double[] flame1 = new double[]{ 250 / 255d, 236 / 255d, 165 / 255d };
+
+      double Lerp (double from, double to, double k)
+        => (1 - k) * from + k * to;
+
+      void FlameIntersection (Vector3d point, double t2, double val)
+      {
+        val = 0.5;
+        var intersection = new Intersection(this)
+        {
+          T = t,
+          Enter = true,
+          Front = true,
+          NormalLocal = -p1,
+          CoordLocal = point,
+          Material = new PhongMaterial(new double[]{ 1, 0, 0 }, 0.3, 0.4, 0.1, 128){ Kt = 0.1 }, //currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5
+          SurfaceColor = new double[]{ Lerp(flame0[0], flame1[0], val), Lerp(flame0[1], flame1[1], val), Lerp(flame0[2], flame1[2], val) }
+        };
+
+        result.AddLast(intersection);
+      }
+
+      Vector3d p = p0 + p1 * t;
+      bool first = true; // Just in case of numerical errors
+      while (IsInside(p))
+      {
+        first = false;
+
+        double val = Sample(p.X + 0.5, p.Y + 0.5, p.Z + 0.5);
+        FlameIntersection(p, t, val);
+
+        t += step;
+        p = p0 + p1 * t;
+      }
+    }
+
     public override LinkedList<Intersection> Intersect (Vector3d p0, Vector3d p1)
     {
       LinkedList<Intersection> result = new LinkedList<Intersection>();
 
-      foreach (var cell in GridRayIntersectingCells(p0, p1))
+      if (RenderMode == Mode.Solid)
       {
-        if (IntersectCell(result, p0, p1, cell))
-          return result;
+        foreach (var cell in GridRayIntersectingCells(p0, p1))
+          if (IntersectCellSolid(result, p0, p1, cell))
+            return result;
       }
-
+      else
+      {
+        IntersectFire(result, p0, p1);
+        return result;
+      }
+      //Console.WriteLine(distSw.Elapsed.TotalSeconds);
       return new LinkedList<Intersection>(result.ToList().OrderBy(x => x.T));
     }
 
