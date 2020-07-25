@@ -48,7 +48,8 @@ if (p.TryGetValue("mat", out string mat))
 //////////////////////////////////////////////////
 // CSG scene.
 
-CSGInnerNode root = new CSGInnerNode(SetOperation.Union);
+AnimatedCSGInnerNode root = new AnimatedCSGInnerNode(SetOperation.Union);
+//CSGInnerNode root = new CSGInnerNode(SetOperation.Union);
 root.SetAttribute(PropertyName.REFLECTANCE_MODEL, new PhongModel());
 root.SetAttribute(PropertyName.MATERIAL, new PhongMaterial(new double[] {1.0, 0.7, 0.1}, 0.3, 0.4, 0.3, 128, sch));
 scene.Intersectable = root;
@@ -76,8 +77,13 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // Transparent/mirror/diffuse sphere.
 Fire f = new Fire(20, 20, 20);
 f.CloudsRandomize(5);
-pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch);
+//f.PointsRandomize(0.3, 0.9, 2000);
+f.RenderMode = Fire.Mode.Fire;
+pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch){Kt = 0.1};
+RecursionFunction del = Fire.RecursionFunction;
 f.SetAttribute(PropertyName.MATERIAL, pm);
+f.SetAttribute(PropertyName.RECURSION, (RecursionFunction)Fire.RecursionFunction);
+f.SetAttribute(PropertyName.NO_SHADOW, true);
 root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
 
 //// Opaque sphere.

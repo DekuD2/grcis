@@ -19,15 +19,64 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Configuration;
+using Utilities;
+using System.Drawing.Drawing2D;
 
 namespace FilipRechtorik
 {
+  public static class PlasmaColor
+  {
+    // https://en.wikipedia.org/wiki/Color_temperature#Calculation
+    // https://en.wikipedia.org/wiki/CIE_1960_color_space
+    // https://www.osapublishing.org/DirectPDFAccess/483495D3-02CF-CAB6-FA39786925B7B494_344803/oe-24-13-14066.pdf?da=1&id=344803&seq=0&mobile=no
+
+    static Matrix3d colorTransform = new Matrix3d(
+      3.1956, 2.4478, -0.1434,
+      -2.5455, 7.0492, 0.9963,
+      0.0000, 0.0000, 1.0000);
+
+    static double xe = 0.3320;
+    static double ye = 0.1858;
+
+    static Vector3d UVToRGB (double u, double v)
+    {
+      double x = 3 * u / (2 * u - 8 * v + 4);
+      double y = 2 * v / (2 * u - 8 * v + 4);
+
+      return Vector3d.Transform(new Vector3d(x, y, 1), new Matrix4d(colorTransform));
+    }
+
+    static double[] flame0 = new double[]{ 89 / 255d, 22 / 255d, 3 / 255d };
+    static double f1s = 1;
+    static double[] flame1 = new double[]{ f1s * 250 / 255d, f1s * 236 / 255d, f1s * 165 / 255d };
+
+    public static double[] ColorAt (double temperature)
+    {
+
+      double Lerp (double from, double to, double k)
+        => (1 - k) * from + k * to;
+
+      return new double[]
+      {
+        Lerp(flame0[0], flame1[0], temperature),
+        Lerp(flame0[1], flame1[1], temperature),
+        Lerp(flame0[2], flame1[2], temperature)
+      };
+    }
+  }
+
   [Serializable]
-  public class Fire : DefaultSceneNode, ISolid
+  public class Fire : DefaultSceneNode, ISolid, ITimeDependent
   {
     public enum Mode { Fire, Solid };
+    public double PlasmaIntensity = 0.5;
+    public double SmokeIntensity = 10;
+    public double SamplingFrequency = 10;
+    public double AnimationStep = 1 / 25d;
+    double currentTime = 0d;
+    const double smokeExponentialBase = 0.5;
 
-    public Mode RenderMode = Mode.Fire;
+    public Mode RenderMode = Mode.Solid;
 
     static Stopwatch distSw = new Stopwatch();
 
@@ -42,6 +91,17 @@ namespace FilipRechtorik
     public float ISx { get; } // 1 / (Sx - 1) ...
     public float ISy { get; }
     public float ISz { get; }
+    public double Start { get; set; }
+    public double End { get; set; }
+    private double time;
+    public double Time
+    {
+      get => time; set
+      {
+        AnimateTo(time);
+        time = value;
+      }
+    }
 
     int maxDim;
 
@@ -66,6 +126,32 @@ namespace FilipRechtorik
       ISx = 1 / (Sx - 1f);
       ISy = 1 / (Sy - 1f);
       ISz = 1 / (Sz - 1f);
+    }
+
+    public void AnimateTo (double time)
+    {
+      while (currentTime < time)
+      {
+        currentTime += AnimationStep;
+
+        float[,,] copy = new float[Sx, Sy, Sz];
+        for (int i = 0; i < Sx; i++)
+          for (int j = 0; j < Sy; j++)
+            for (int k = 0; k < Sz; k++)
+              copy[i, j, k] = volume[i, j, k];
+
+        for (int i = 1; i < Sx - 1; i++)
+          for (int j = 1; j < Sy - 1; j++)
+            for (int k = 1; k < Sz - 1; k++)
+            {
+              volume[i, j, k] = 0;
+              for (int x = -1; x <= 1; x++)
+                for (int y = -1; y <= 1; y++)
+                  for (int z = -1; z <= 1; z++)
+                    volume[i, j, k] += copy[i + x, j + y, k + z];
+              volume[i, j, k] /= 27f;
+            }
+      }
     }
 
     // Input: coordinates 0-1
@@ -109,9 +195,23 @@ namespace FilipRechtorik
       return value;
     }
 
-    public void CloudsRandomize (int numPoints = 15)
+    public void PointsRandomize (double min, double max, int nPoints)
     {
       Random rnd = new Random();
+
+      for (int i = 0; i < nPoints; i++)
+      {
+        int x = rnd.Next(1, Sx - 1);
+        int y = rnd.Next(1, Sy - 1);
+        int z = rnd.Next(1, Sz - 1);
+        double val = rnd.NextDouble() * (max - min) + min;
+        volume[x, y, z] = (float)val;
+      }
+    }
+
+    public void CloudsRandomize (int numPoints = 15, int seed = 0)
+    {
+      Random rnd = new Random(seed);
 
       Vector3[] points = new Vector3[numPoints];
       for (int i = 0; i < numPoints; i++)
@@ -435,53 +535,22 @@ namespace FilipRechtorik
 
     void IntersectFire (LinkedList<Intersection> result, Vector3d p0, Vector3d p1)
     {
-      // How many lines?
       double t = FindStart(p0, p1);
-      double step = 1d / (maxDim * p1.Length);
-      double stepSize = step * p1.Length;
 
-      bool IsInside (Vector3d point)
-      {
-        return
-          point.X >= -0.5 && point.Y >= -0.5 && point.Z >= -0.5 &&
-          point.X <= 0.5 && point.Y <= 0.5 && point.Z <= 0.5;
-      }
+      Vector3d pStart = p0 + t * p1;
 
-      double[] flame0 = new double[]{ 89 / 255d, 22 / 255d, 3 / 255d };
-      double[] flame1 = new double[]{ 250 / 255d, 236 / 255d, 165 / 255d };
-
-      double Lerp (double from, double to, double k)
-        => (1 - k) * from + k * to;
-
-      void FlameIntersection (Vector3d point, double t2, double val)
-      {
-        val = 0.5;
-        var intersection = new Intersection(this)
+      if (t > 0 &&
+        pStart.X >= -0.5 && pStart.X <= 0.5 &&
+        pStart.Y >= -0.5 && pStart.Y <= 0.5 &&
+        pStart.Z >= -0.5 && pStart.Z <= 0.5)
+        result.AddLast(new Intersection(this)
         {
           T = t,
           Enter = true,
           Front = true,
           NormalLocal = -p1,
-          CoordLocal = point,
-          Material = new PhongMaterial(new double[]{ 1, 0, 0 }, 0.3, 0.4, 0.1, 128){ Kt = 0.1 }, //currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5
-          SurfaceColor = new double[]{ Lerp(flame0[0], flame1[0], val), Lerp(flame0[1], flame1[1], val), Lerp(flame0[2], flame1[2], val) }
-        };
-
-        result.AddLast(intersection);
-      }
-
-      Vector3d p = p0 + p1 * t;
-      bool first = true; // Just in case of numerical errors
-      while (IsInside(p))
-      {
-        first = false;
-
-        double val = Sample(p.X + 0.5, p.Y + 0.5, p.Z + 0.5);
-        FlameIntersection(p, t, val);
-
-        t += step;
-        p = p0 + p1 * t;
-      }
+          CoordLocal = pStart
+        });
     }
 
     public override LinkedList<Intersection> Intersect (Vector3d p0, Vector3d p1)
@@ -541,12 +610,74 @@ namespace FilipRechtorik
     {
       // Normal vector - no need to do anything here as NormalLocal is defined...
 
-      // 2D texture coordinates.
-      double r = Math.Sqrt(inter.CoordLocal.X * inter.CoordLocal.X + inter.CoordLocal.Y * inter.CoordLocal.Y);
-      inter.TextureCoord.X = Geometry.IsZero(r)
-        ? 0.0
-        : (Math.Atan2(inter.CoordLocal.Y, inter.CoordLocal.X) / (2.0 * Math.PI) + 0.5);
-      inter.TextureCoord.Y = Math.Atan2(r, inter.CoordLocal.Z) / Math.PI;
+      if (RenderMode == Mode.Solid)
+      {
+        // 2D texture coordinates.
+        double r = Math.Sqrt(inter.CoordLocal.X * inter.CoordLocal.X + inter.CoordLocal.Y * inter.CoordLocal.Y);
+        inter.TextureCoord.X = Geometry.IsZero(r)
+          ? 0.0
+          : (Math.Atan2(inter.CoordLocal.Y, inter.CoordLocal.X) / (2.0 * Math.PI) + 0.5);
+        inter.TextureCoord.Y = Math.Atan2(r, inter.CoordLocal.Z) / Math.PI;
+      }
+      else if (RenderMode == Mode.Fire)
+      {
+        Vector3d p1 = -inter.NormalLocal;
+        Vector3d p0 = inter.CoordLocal;
+
+        // How many lines?
+        double step = 1d / (SamplingFrequency * maxDim * p1.Length); // unit one / max dimension
+        double stepSize = step * p1.Length;
+
+        bool IsInside (Vector3d point)
+        {
+          return
+            point.X >= -0.5 && point.Y >= -0.5 && point.Z >= -0.5 &&
+            point.X <= 0.5 && point.Y <= 0.5 && point.Z <= 0.5;
+        }
+
+        // Idea for color calculating
+        //  Have a smoke factor starting at 0
+        //  When you sample value < plasmaThreshold, add it to smoke factor
+        //  When you sample value >= plasmaThreshold, compute it's color from gradient, apply smoke factor, add
+        //  Return smoke factor as .TextureCoord.X, return color as .SurfaceColor
+
+
+        Vector3d p = p0;
+        double t = 0;
+        double smoke = 0;
+        double plasma = 0;
+        double plasmaThreshold = 0.5;
+        double smokeThreshold = 0.25;
+
+        double plasmaMultiplier = (1d / (1 - plasmaThreshold));
+        double smokeMultiplier = (1d / (plasmaThreshold - smokeThreshold));
+        double[] plasmaColor = new double[3];
+        while (IsInside(p))
+        {
+          double val = Sample(p.X + 0.5, p.Y + 0.5, p.Z + 0.5);
+
+          if (val > plasmaThreshold)
+          {
+            plasma += val;
+            var col = PlasmaColor.ColorAt((val - plasmaThreshold) * plasmaMultiplier);
+            double smokeAbsorb = Math.Pow(smokeExponentialBase, smoke);
+            plasmaColor[0] += col[0] * smokeAbsorb * PlasmaIntensity * stepSize;
+            plasmaColor[1] += col[1] * smokeAbsorb * PlasmaIntensity * stepSize;
+            plasmaColor[2] += col[2] * smokeAbsorb * PlasmaIntensity * stepSize;
+          }
+          else //if (val > smokeThreshold)
+          {
+            smoke += (val - smokeThreshold) * smokeMultiplier * SmokeIntensity * stepSize;
+          }
+
+          t += step;
+          p = p0 + p1 * t;
+        }
+
+        inter.SurfaceColor = plasmaColor;
+        inter.TextureCoord.X = plasma;
+        inter.TextureCoord.Y = Math.Pow(smokeExponentialBase, smoke);
+      }
     }
 
     public void GetBoundingBox (out Vector3d corner1, out Vector3d corner2)
@@ -564,7 +695,39 @@ namespace FilipRechtorik
 
     public object Clone ()
     {
-      throw new NotImplementedException();
+      Fire copy = new Fire(Sx, Sy, Sz);
+      copy.RenderMode = RenderMode;
+      copy.PlasmaIntensity = PlasmaIntensity;
+      copy.SmokeIntensity = SmokeIntensity;
+      copy.SamplingFrequency = SamplingFrequency;
+      copy.AnimationStep = AnimationStep;
+      copy.currentTime = currentTime;
+      copy.time = time;
+
+      ShareCloneAttributes(copy);
+
+      for (int i = 0; i < Sx; i++)
+        for (int j = 0; j < Sy; j++)
+          for (int k = 0; k < Sz; k++)
+            copy.volume[i, j, k] = volume[i, j, k];
+
+      return copy;
+    }
+
+    public static long RecursionFunction (Intersection i, Vector3d dir, double importance, out RayRecursion rr)
+    {
+      double plasma = i.TextureCoord.X;
+      double smoke = MathHelper.Clamp(i.TextureCoord.Y, 0, 1);
+
+      rr = new RayRecursion(
+        Util.ColorClone(i.SurfaceColor, plasma),
+        //Util.ColorClone(i.SurfaceColor),
+        new RayRecursion.RayContribution(i, dir, importance)
+        {
+          coefficient = new double[] { smoke, smoke, smoke }
+        });
+
+      return 122L;
     }
   }
 }

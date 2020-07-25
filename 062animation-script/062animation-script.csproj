@@ -198,6 +198,9 @@
     <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\SphereVolumeScene.cs">
       <Link>FR\SphereVolumeScene.cs</Link>
     </None>
+    <Compile Include="..\newmodules\JosefPelikan-ChaoticParticles\ChaoticParticles.cs">
+      <Link>FR\ChaoticParticles.cs</Link>
+    </Compile>
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
