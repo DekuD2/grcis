@@ -198,6 +198,12 @@
     <None Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\SphereVolumeScene.cs">
       <Link>FR\SphereVolumeScene.cs</Link>
     </None>
+    <Compile Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\Texture3D.cs">
+      <Link>FR\Texture3D.cs</Link>
+    </Compile>
+    <Compile Include="..\newmodules\FilipRechtorik-VolumeCubeMarching\Volume.cs">
+      <Link>FR\Volume.cs</Link>
+    </Compile>
     <Compile Include="..\newmodules\JosefPelikan-ChaoticParticles\ChaoticParticles.cs">
       <Link>FR\ChaoticParticles.cs</Link>
     </Compile>
