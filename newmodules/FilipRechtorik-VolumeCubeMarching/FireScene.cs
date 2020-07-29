@@ -77,11 +77,12 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // Transparent/mirror/diffuse sphere.
 Fire f = new Fire(20, 20, 20);
 //f.CloudsRandomize(5);
+//Volume f = new Volume(20, 20, 20);
+//f.CloudsRandomize(5);
 //f.PointsRandomize(0.3, 0.9, 2000);
 pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch){Kt = 0.1};
-RecursionFunction del = Fire.RecursionFunction;
 f.SetAttribute(PropertyName.MATERIAL, pm);
-f.SetAttribute(PropertyName.RECURSION, (RecursionFunction)Fire.RecursionFunction);
+f.SetAttribute(PropertyName.RECURSION, (RecursionFunction) Fire.RecursionFunction);
 f.SetAttribute(PropertyName.NO_SHADOW, true);
 root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
 

@@ -80,9 +80,9 @@ namespace FilipRechtorik
     {
       Random rnd = new Random();
       frequency = RandomVector(rnd, new Vector3d(1), new Vector3d(2));
-      amplitude = RandomVector(rnd, new Vector3d(0.3), new Vector3d(0.7));
+      amplitude = RandomVector(rnd, new Vector3d(0.1), new Vector3d(0.4));
       baseShift = RandomVector(rnd, new Vector3d(0), new Vector3d(3.14159265358979));
-      timeShift = RandomVector(rnd, new Vector3d(-0.3), new Vector3d(0.3));
+      timeShift = RandomVector(rnd, new Vector3d(-0.1), new Vector3d(0.1));
     }
 
     Vector3d RandomVector (Random rnd, Vector3d min, Vector3d max)
@@ -109,6 +109,8 @@ namespace FilipRechtorik
     public double SamplingFrequency = 10;
     const double smokeExponentialBase = 0.5;
 
+    public Volume Fuel;
+
     Wind wind = new Wind ();
 
     public double AnimationStep = 1 / 25d;
@@ -126,7 +128,11 @@ namespace FilipRechtorik
       }
     }
 
-    public Fire (int sx, int sy, int sz) : base(sx, sy, sz) { }
+    public Fire (int sx, int sy, int sz) : base(sx, sy, sz)
+    {
+      Fuel = new Volume(sx, sy, sz);
+      Fuel.CloudsRandomize(5);
+    }
 
     public void ApplyHeatTransfer (double time)
     {
@@ -291,6 +297,8 @@ namespace FilipRechtorik
     {
       LinkedList<Intersection> result = new LinkedList<Intersection>();
 
+      double fuelT = Fuel.Intersect(p0, p1).FirstOrDefault()?.T ?? -1;
+
       double t = FindStart(p0, p1);
 
       Vector3d pStart = p0 + t * p1;
@@ -305,40 +313,12 @@ namespace FilipRechtorik
           Enter = true,
           Front = true,
           NormalLocal = -p1,
-          CoordLocal = pStart
-        });
+          CoordLocal = pStart,
+          TangentU = new Vector3d(fuelT)
+        })
+      ;
 
       return result;
-    }
-
-    /// <param name="s0">sphere position</param>
-    /// <param name="r">sphere radius</param>
-    /// <returns></returns>
-    public bool IntersectSphere (Vector3d s0, double r, Vector3d p0, Vector3d p1, out double t0, out double t1)
-    {
-      t0 = 0;
-      t1 = 0;
-
-      p0 = p0 - s0;
-
-      double OD;
-      Vector3d.Dot(ref p0, ref p1, out OD);
-      double DD;
-      Vector3d.Dot(ref p1, ref p1, out DD);
-      double OO;
-      Vector3d.Dot(ref p0, ref p0, out OO);
-      double d = OD * OD + DD * (r*r - OO); // discriminant
-      if (d <= 0.0)
-        return false;            // no intersections
-
-      d = Math.Sqrt(d);
-
-      // there will be two intersections: (-OD - d) / DD, (-OD + d) / DD
-      LinkedList<Intersection> result = new LinkedList<Intersection> ();
-      t0 = (-OD - d) / DD;
-      t1 = (-OD + d) / DD;
-
-      return true;
     }
 
     /// <summary>
@@ -349,6 +329,8 @@ namespace FilipRechtorik
     {
       Vector3d p1 = -inter.NormalLocal;
       Vector3d p0 = inter.CoordLocal;
+
+      double fuelT = inter.TangentU.X;
 
       // How many lines?
       double step = 1d / (SamplingFrequency * maxDim * p1.Length); // unit one / max dimension
@@ -433,14 +415,19 @@ namespace FilipRechtorik
     {
       double plasma = i.TextureCoord.X;
       double smoke = MathHelper.Clamp(i.TextureCoord.Y, 0, 1);
+      double fuelT = i.TangentU.X;
 
-      rr = new RayRecursion(
-        Util.ColorClone(i.SurfaceColor, plasma),
-        //Util.ColorClone(i.SurfaceColor),
-        new RayRecursion.RayContribution(i, dir, importance)
-        {
-          coefficient = new double[] { smoke, smoke, smoke }
-        });
+      if(fuelT == -1)
+        rr = new RayRecursion(
+          Util.ColorClone(i.SurfaceColor, plasma),
+          //Util.ColorClone(i.SurfaceColor),
+          new RayRecursion.RayContribution(i, dir, importance)
+          {
+            coefficient = new double[] { smoke, smoke, smoke }
+          });
+      else
+        rr = new RayRecursion(Util.ColorClone(i.SurfaceColor, plasma));
+
 
       return 122L;
     }

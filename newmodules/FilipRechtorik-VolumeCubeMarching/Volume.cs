@@ -34,6 +34,8 @@ namespace FilipRechtorik
     public float MinRadius = 0.1f;
     public float MaxRadius = 0.5f;
 
+    const int blendRange = 1;
+
     public Volume (int sx, int sy, int sz) : base(sx, sy, sz) { }
 
     class CellRayIntersection
@@ -227,7 +229,7 @@ namespace FilipRechtorik
 
       // blendRange of 1 = just the cube around the point.
       // blend range of 2 = 9 cubes around the point
-      double Dist (Vector3d point, int blendRange = 2)
+      double Dist (Vector3d point)
       {
         List<double> distances = new List<double>();
         for (int i = 1 - blendRange; i <= blendRange; i++)
