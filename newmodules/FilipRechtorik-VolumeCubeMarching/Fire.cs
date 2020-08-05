@@ -104,12 +104,15 @@ namespace FilipRechtorik
   [Serializable]
   public class Fire : Texture3D, ITimeDependent
   {
-    public double PlasmaIntensity = 0.5;
+    public enum Fuel { Floor, Point, Volume };
+
+    public double PlasmaIntensity = 17;
     public double SmokeIntensity = 10;
     public double SamplingFrequency = 10;
     const double smokeExponentialBase = 0.5;
 
-    public Volume Fuel;
+    public Volume FuelVolume;
+    public Fuel FuelType = Fuel.Point;
 
     Wind wind = new Wind ();
 
@@ -128,10 +131,13 @@ namespace FilipRechtorik
       }
     }
 
-    public Fire (int sx, int sy, int sz) : base(sx, sy, sz)
+    public Fire (int sx, int sy, int sz, Volume fuel = null) : base(sx, sy, sz)
     {
-      Fuel = new Volume(sx, sy, sz);
-      Fuel.CloudsRandomize(5);
+      if (fuel != null)
+      {
+        FuelType = Fuel.Volume;
+        FuelVolume = fuel;
+      }
     }
 
     public void ApplyHeatTransfer (double time)
@@ -193,7 +199,6 @@ namespace FilipRechtorik
 
     public void AnimateTo (double time)
     {
-      Debug.WriteLine(time);
       // Idea:
       // Simulate plasma values using the usual grid simulation
       // But simulate smoke differently. Move it chaotically.
@@ -202,7 +207,18 @@ namespace FilipRechtorik
       {
         simulationTime += AnimationStep;
 
-        AblazeFloor(1f);
+        switch (FuelType)
+        {
+          case Fuel.Floor:
+            BurnFloor(1f);
+            break;
+          case Fuel.Volume:
+            BurnFuel(18, 0.5);
+            break;
+          default:
+            BurnPoint(75f);
+            break;
+        }
         ApplyHeatTransfer(simulationTime);
 
         float[,,] copy = new float[Sx, Sy, Sz];
@@ -251,12 +267,41 @@ namespace FilipRechtorik
       }
     }
 
-    void AblazeFloor (float value)
+    void BurnFloor (float value)
     {
       for (int i = 1; i < Sx - 1; i++)
         for (int k = 1; k < Sy - 1; k++)
           volume[i, 1, k] = value;
-      //volume[Sx / 2, 1, Sz / 2] = value;
+    }
+
+    void BurnPoint (float value)
+    {
+      volume[Sx / 2, 1, Sz / 2] = value;
+    }
+
+    void BurnFuel (double plasmaPerRadius, double burnPerSecond, double burnThreshold = 0.5)
+    {
+      // First create plasma from wood
+      for (int i = 1; i < (Sx - 1); i++)
+        for (int j = 1; j < (Sy - 1); j++)
+          for (int k = 1; k < (Sz - 1); k++)
+          {
+            if (FuelVolume.RadiusAt(i, j, k) > 0 && ( // fuel at this point and air in some direction
+                FuelVolume.RadiusAt(i + 1, j, k) == 0 || FuelVolume.RadiusAt(i - 1, j, k) == 0 ||
+                FuelVolume.RadiusAt(i, j + 1, k) == 0 || FuelVolume.RadiusAt(i, j - 1, k) == 0 ||
+                FuelVolume.RadiusAt(i, j, k + 1) == 0 || FuelVolume.RadiusAt(i, j, k - 1) == 0))
+              volume[i, j, k] += (float)(plasmaPerRadius * AnimationStep);
+          }
+
+      // Then burn wood by plasma
+      for (int i = 1; i < (Sx - 1); i++)
+        for (int j = 1; j < (Sy - 1); j++)
+          for (int k = 1; k < (Sz - 1); k++)
+          {
+            var plasma = volume[i,j,k];
+            if (plasma > burnThreshold)
+              FuelVolume.BurnAt(i, j, k, plasma * burnPerSecond * AnimationStep);
+          }
     }
 
     double FindStart (Vector3d p0, Vector3d p1)
@@ -297,7 +342,9 @@ namespace FilipRechtorik
     {
       LinkedList<Intersection> result = new LinkedList<Intersection>();
 
-      double fuelT = Fuel.Intersect(p0, p1).FirstOrDefault()?.T ?? -1;
+      double fuelT = -1;
+      if (FuelType == Fuel.Volume)
+        fuelT = FuelVolume?.Intersect(p0, p1).FirstOrDefault()?.T ?? -1;
 
       double t = FindStart(p0, p1);
 
@@ -360,7 +407,8 @@ namespace FilipRechtorik
       double plasmaMultiplier = (1d / (1 - plasmaThreshold));
       double smokeMultiplier = (1d / (plasmaThreshold - smokeThreshold));
       double[] plasmaColor = new double[3];
-      while (IsInside(p))
+
+      while (IsInside(p) && (fuelT == -1 || t < fuelT))
       {
         double val = Sample(p.X + 0.5, p.Y + 0.5, p.Z + 0.5);
 
@@ -389,15 +437,21 @@ namespace FilipRechtorik
 
     public object Clone ()
     {
-      Fire copy = new Fire(Sx, Sy, Sz);
+      //Debug.WriteLine("Clone {");
+      //Debug.Indent();
+      Fire copy = new Fire(Sx, Sy, Sz, (Volume)FuelVolume?.Clone());
+
+      ShareCloneAttributes(copy);
+
       copy.PlasmaIntensity = PlasmaIntensity;
       copy.SmokeIntensity = SmokeIntensity;
       copy.SamplingFrequency = SamplingFrequency;
       copy.AnimationStep = AnimationStep;
       copy.simulationTime = simulationTime;
       copy.wind = wind;
-
-      ShareCloneAttributes(copy);
+      copy.FuelType = FuelType;
+      //copy.Fuel = (Volume)Fuel.Clone();
+      //copy.Fuel = Fuel;
 
       for (int i = 0; i < Sx; i++)
         for (int j = 0; j < Sy; j++)
@@ -408,6 +462,8 @@ namespace FilipRechtorik
       copy.seed = seed;
       copy.random = new Random(seed);
 
+      //Debug.Unindent();
+      //Debug.WriteLine("}");
       return copy;
     }
 
@@ -417,16 +473,23 @@ namespace FilipRechtorik
       double smoke = MathHelper.Clamp(i.TextureCoord.Y, 0, 1);
       double fuelT = i.TangentU.X;
 
-      if(fuelT == -1)
+      //plasma = 1d;
+      //fuelT = -1;
+
+      double length = Math.Sqrt(i.SurfaceColor[0] * i.SurfaceColor[0] + i.SurfaceColor[1] * i.SurfaceColor[1] + i.SurfaceColor[2] * i.SurfaceColor[2]);
+      length = Math.Max(1, length);
+      double[] col = new double[]{i.SurfaceColor[0] / length, i.SurfaceColor[1] / length, i.SurfaceColor[2] / length };
+
+      if (fuelT == -1)
         rr = new RayRecursion(
-          Util.ColorClone(i.SurfaceColor, plasma),
-          //Util.ColorClone(i.SurfaceColor),
+          //Util.ColorClone(col, 0.8),
+          Util.ColorClone(i.SurfaceColor),
           new RayRecursion.RayContribution(i, dir, importance)
           {
             coefficient = new double[] { smoke, smoke, smoke }
           });
       else
-        rr = new RayRecursion(Util.ColorClone(i.SurfaceColor, plasma));
+        rr = new RayRecursion(Util.ColorClone(col, 0.8));
 
 
       return 122L;

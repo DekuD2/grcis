@@ -25,7 +25,7 @@ using System.Drawing.Drawing2D;
 namespace FilipRechtorik
 {
   [Serializable]
-  public class Volume : Texture3D
+  public class Volume : Texture3D, ICloneable
   {
     // Determines the value treshold that creates the sphere
     public float Threshold = 0.5f;
@@ -37,6 +37,26 @@ namespace FilipRechtorik
     const int blendRange = 1;
 
     public Volume (int sx, int sy, int sz) : base(sx, sy, sz) { }
+
+    public double RadiusAt (int x, int y, int z)
+    {
+      double v = volume[x, y, z];
+      if (v < Threshold)
+        return 0;
+      double radius = MinRadius + (MaxRadius - MinRadius) * v / (1 - Threshold);
+      return MathHelper.Clamp(radius, 0, 1);
+    }
+
+    public void BurnAt (int x, int y, int z, double burnRadius)
+    {
+      volume[x, y, z] = (float)Math.Max(0, volume[x, y, z] - burnRadius);
+
+      //double v = volume[x, y, z];
+      //double radius = MinRadius + (MaxRadius - MinRadius) * v / (1 - Threshold);
+      //double newRadius = radius - burnRadius;
+      //volume[x, y, z] = (float)(newRadius - MinRadius * (1 - Threshold) / (MaxRadius - MinRadius));
+      //volume[x, y, z] = Math.Max(0, volume[x, y, z]);
+    }
 
     class CellRayIntersection
     {
@@ -341,6 +361,24 @@ namespace FilipRechtorik
         ? 0.0
         : (Math.Atan2(inter.CoordLocal.Y, inter.CoordLocal.X) / (2.0 * Math.PI) + 0.5);
       inter.TextureCoord.Y = Math.Atan2(r, inter.CoordLocal.Z) / Math.PI;
+    }
+
+    public object Clone ()
+    {
+      Volume copy = new Volume(Sx, Sy, Sz);
+
+      ShareCloneAttributes(copy);
+
+      copy.Threshold = Threshold;
+      copy.MinRadius = MinRadius;
+      copy.MaxRadius = MaxRadius;
+
+      for (int i = 0; i < Sx; i++)
+        for (int j = 0; j < Sy; j++)
+          for (int k = 0; k < Sz; k++)
+            copy.volume[i, j, k] = volume[i, j, k];
+
+      return copy;
     }
   }
 }

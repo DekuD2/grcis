@@ -45,6 +45,12 @@ namespace FilipRechtorik
     protected int maxDim;
     protected double epsilon;
 
+    public void SetSeed(int seed)
+    {
+      this.seed = seed;
+      this.random = new Random(seed);
+    }
+
     public Texture3D (int sx, int sy, int sz)
     {
       Random rnd = new Random();

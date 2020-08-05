@@ -44,7 +44,7 @@ if (p.TryGetValue("mat", out string mat))
     case "glass":
       break;
   }
-
+    
 //////////////////////////////////////////////////
 // CSG scene.
 
@@ -75,7 +75,11 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // --- NODE DEFINITIONS ----------------------------------------------------
 
 // Transparent/mirror/diffuse sphere.
-Fire f = new Fire(20, 20, 20);
+Volume fuel = new Volume(50, 50, 50);
+fuel.SetSeed(10);
+fuel.CloudsRandomize(5);
+Fire f = new Fire(50, 50, 50, fuel);
+
 //f.CloudsRandomize(5);
 //Volume f = new Volume(20, 20, 20);
 //f.CloudsRandomize(5);
