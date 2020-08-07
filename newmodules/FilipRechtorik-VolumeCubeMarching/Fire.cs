@@ -58,7 +58,7 @@ namespace FilipRechtorik
       double Lerp (double from, double to, double k)
         => (1 - k) * from + k * to;
 
-      temperature = temperature * temperature * temperature;
+      temperature = temperature * temperature; // * temperature;
 
       return new double[]
       {
@@ -79,10 +79,10 @@ namespace FilipRechtorik
     public Wind ()
     {
       Random rnd = new Random();
-      frequency = RandomVector(rnd, new Vector3d(1), new Vector3d(2));
-      amplitude = RandomVector(rnd, new Vector3d(0.1), new Vector3d(0.4));
+      frequency = RandomVector(rnd, new Vector3d(0.3), new Vector3d(0.6));
+      amplitude = RandomVector(rnd, new Vector3d(0.03), new Vector3d(0.12));
       baseShift = RandomVector(rnd, new Vector3d(0), new Vector3d(3.14159265358979));
-      timeShift = RandomVector(rnd, new Vector3d(-0.1), new Vector3d(0.1));
+      timeShift = RandomVector(rnd, new Vector3d(-0.05), new Vector3d(0.05));
     }
 
     Vector3d RandomVector (Random rnd, Vector3d min, Vector3d max)
@@ -106,7 +106,7 @@ namespace FilipRechtorik
   {
     public enum Fuel { Floor, Point, Volume };
 
-    public double PlasmaIntensity = 17;
+    public double PlasmaIntensity = 4; //17;
     public double SmokeIntensity = 10;
     public double SamplingFrequency = 10;
     const double smokeExponentialBase = 0.5;
@@ -402,7 +402,7 @@ namespace FilipRechtorik
       double smoke = 0;
       double plasma = 0;
       double plasmaThreshold = 0.5;
-      double smokeThreshold = 0.25;
+      double smokeThreshold = 0.1;
 
       double plasmaMultiplier = (1d / (1 - plasmaThreshold));
       double smokeMultiplier = (1d / (plasmaThreshold - smokeThreshold));
@@ -421,7 +421,7 @@ namespace FilipRechtorik
           plasmaColor[1] += col[1] * smokeAbsorb * PlasmaIntensity * stepSize;
           plasmaColor[2] += col[2] * smokeAbsorb * PlasmaIntensity * stepSize;
         }
-        else //if (val > smokeThreshold)
+        else if (val > smokeThreshold)
         {
           smoke += (val - smokeThreshold) * smokeMultiplier * SmokeIntensity * stepSize;
         }
@@ -469,7 +469,9 @@ namespace FilipRechtorik
 
     public static long RecursionFunction (Intersection i, Vector3d dir, double importance, out RayRecursion rr)
     {
-      double plasma = i.TextureCoord.X;
+      // What if I literally insert the wood inside the fire and then let a ray hit it?
+      double plasma = i.TextureCoord.X / 100d;
+      double ip = MathHelper.Clamp(1.4 - plasma, 0, 1);
       double smoke = MathHelper.Clamp(i.TextureCoord.Y, 0, 1);
       double fuelT = i.TangentU.X;
 
@@ -477,19 +479,39 @@ namespace FilipRechtorik
       //fuelT = -1;
 
       double length = Math.Sqrt(i.SurfaceColor[0] * i.SurfaceColor[0] + i.SurfaceColor[1] * i.SurfaceColor[1] + i.SurfaceColor[2] * i.SurfaceColor[2]);
-      length = Math.Max(1, length);
-      double[] col = new double[]{i.SurfaceColor[0] / length, i.SurfaceColor[1] / length, i.SurfaceColor[2] / length };
+      //double l = length;
+      //double l2 = 800 - length;
+      //if (l > 0)
+      //  Debug.WriteLine(l);
+      //length = Math.Max(1, length);
+      //length = plasma;
+      //length = 1;
+      double[] col = new double[] { i.SurfaceColor[0] / length, i.SurfaceColor[1] / length, i.SurfaceColor[2] / length };
+      col = new double[] { col[0] * plasma, col[1] * plasma, col[2] * plasma };
+      if (plasma == 0)
+        col = new double[] { 0, 0, 0 };
 
       if (fuelT == -1)
+      {
         rr = new RayRecursion(
           //Util.ColorClone(col, 0.8),
-          Util.ColorClone(i.SurfaceColor),
+          Util.ColorClone(col),
+          //Util.ColorClone(i.SurfaceColor),
           new RayRecursion.RayContribution(i, dir, importance)
           {
             coefficient = new double[] { smoke, smoke, smoke }
           });
+        //if (smoke < 0.7)
+        //  Debug.WriteLine(smoke);
+      }
       else
-        rr = new RayRecursion(Util.ColorClone(col, 0.8));
+      {
+        double[] wood = new double[] { 59 / 255d, 37 / 255d, 14 / 255d };
+        //Debug.WriteLine(l2);
+        //rr = new RayRecursion(Util.ColorClone(col, 0.8));
+        //rr = new RayRecursion(new double[] { i.SurfaceColor[0] + wood[0], i.SurfaceColor[1] + wood[1], i.SurfaceColor[2] + wood[2] });
+        rr = new RayRecursion(new double[] { col[0] + wood[0] * ip, col[1] + wood[1] * ip, col[2] + wood[2] * ip });
+      }
 
 
       return 122L;
