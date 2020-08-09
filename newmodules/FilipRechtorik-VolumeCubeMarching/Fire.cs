@@ -102,6 +102,44 @@ namespace FilipRechtorik
   }
 
   [Serializable]
+  public class FireSimulation : DefaultSceneNode, ITimeDependent
+  {
+    Fire fire;
+    Volume fuel;
+
+    public double Start { get; set; }
+    public double End { get; set; }
+    private double time;
+    public double Time
+    {
+      get => time;
+      set
+      {
+        time = value;
+        fire.Time = value;
+      }
+    }
+
+    public FireSimulation (Fire fire, Volume fuel)
+    {
+      this.fire = fire;
+      this.fuel = fuel;
+      InsertChild(fire, Matrix4d.Identity);
+      InsertChild(fuel, Matrix4d.Identity);
+    }
+
+    public object Clone ()
+    {
+      Fire fireClone = (Fire)fire.Clone();
+      Volume fuelClone = fireClone.FuelVolume;
+
+      FireSimulation copy = new FireSimulation(fireClone, fuelClone);
+      ShareCloneAttributes(copy);
+      return copy;
+    }
+  }
+
+  [Serializable]
   public class Fire : Texture3D, ITimeDependent
   {
     public enum Fuel { Floor, Point, Volume };
@@ -138,6 +176,9 @@ namespace FilipRechtorik
         FuelType = Fuel.Volume;
         FuelVolume = fuel;
       }
+
+      SetAttribute(PropertyName.RECURSION, (RecursionFunction)RecursionFunction);
+      SetAttribute(PropertyName.NO_SHADOW, true);
     }
 
     public void ApplyHeatTransfer (double time)
@@ -213,7 +254,7 @@ namespace FilipRechtorik
             BurnFloor(1f);
             break;
           case Fuel.Volume:
-            BurnFuel(18, 0.5);
+            BurnFuel(12, 0.3);
             break;
           default:
             BurnPoint(75f);
@@ -281,16 +322,25 @@ namespace FilipRechtorik
 
     void BurnFuel (double plasmaPerRadius, double burnPerSecond, double burnThreshold = 0.5)
     {
+      bool Edge (int i, int j, int k)
+        => FuelVolume.RadiusAt(i, j, k) > 0 && ( // fuel at this point and air in some direction
+        FuelVolume.RadiusAt(i + 1, j, k) == 0 || FuelVolume.RadiusAt(i - 1, j, k) == 0 ||
+        FuelVolume.RadiusAt(i, j + 1, k) == 0 || FuelVolume.RadiusAt(i, j - 1, k) == 0 ||
+        FuelVolume.RadiusAt(i, j, k + 1) == 0 || FuelVolume.RadiusAt(i, j, k - 1) == 0);
+
+      bool Interior (int i, int j, int k)
+        => FuelVolume.RadiusAt(i, j, k) > 0 && !Edge(i, j, k);
+
       // First create plasma from wood
       for (int i = 1; i < (Sx - 1); i++)
         for (int j = 1; j < (Sy - 1); j++)
           for (int k = 1; k < (Sz - 1); k++)
           {
-            if (FuelVolume.RadiusAt(i, j, k) > 0 && ( // fuel at this point and air in some direction
-                FuelVolume.RadiusAt(i + 1, j, k) == 0 || FuelVolume.RadiusAt(i - 1, j, k) == 0 ||
-                FuelVolume.RadiusAt(i, j + 1, k) == 0 || FuelVolume.RadiusAt(i, j - 1, k) == 0 ||
-                FuelVolume.RadiusAt(i, j, k + 1) == 0 || FuelVolume.RadiusAt(i, j, k - 1) == 0))
+            if (Edge(i, j, k))
               volume[i, j, k] += (float)(plasmaPerRadius * AnimationStep);
+
+            if (Interior(i, j, k)) // Also remove plasma from inside of the wood
+              volume[i, j, k] = 0;
           }
 
       // Then burn wood by plasma
@@ -298,7 +348,7 @@ namespace FilipRechtorik
         for (int j = 1; j < (Sy - 1); j++)
           for (int k = 1; k < (Sz - 1); k++)
           {
-            var plasma = volume[i,j,k];
+            var plasma = MathHelper.Clamp(volume[i,j,k], 0, 1);
             if (plasma > burnThreshold)
               FuelVolume.BurnAt(i, j, k, plasma * burnPerSecond * AnimationStep);
           }
@@ -439,7 +489,8 @@ namespace FilipRechtorik
     {
       //Debug.WriteLine("Clone {");
       //Debug.Indent();
-      Fire copy = new Fire(Sx, Sy, Sz, (Volume)FuelVolume?.Clone());
+      Volume fuel = (Volume)FuelVolume?.Clone();
+      Fire copy = new Fire(Sx, Sy, Sz, fuel);
 
       ShareCloneAttributes(copy);
 
@@ -450,8 +501,6 @@ namespace FilipRechtorik
       copy.simulationTime = simulationTime;
       copy.wind = wind;
       copy.FuelType = FuelType;
-      //copy.Fuel = (Volume)Fuel.Clone();
-      //copy.Fuel = Fuel;
 
       for (int i = 0; i < Sx; i++)
         for (int j = 0; j < Sy; j++)
@@ -479,23 +528,17 @@ namespace FilipRechtorik
       //fuelT = -1;
 
       double length = Math.Sqrt(i.SurfaceColor[0] * i.SurfaceColor[0] + i.SurfaceColor[1] * i.SurfaceColor[1] + i.SurfaceColor[2] * i.SurfaceColor[2]);
-      //double l = length;
-      //double l2 = 800 - length;
-      //if (l > 0)
-      //  Debug.WriteLine(l);
-      //length = Math.Max(1, length);
-      //length = plasma;
-      //length = 1;
       double[] col = new double[] { i.SurfaceColor[0] / length, i.SurfaceColor[1] / length, i.SurfaceColor[2] / length };
       col = new double[] { col[0] * plasma, col[1] * plasma, col[2] * plasma };
+
       if (plasma == 0)
         col = new double[] { 0, 0, 0 };
 
-      if (fuelT == -1)
+      if (fuelT == -1 || true)
       {
         rr = new RayRecursion(
           //Util.ColorClone(col, 0.8),
-          Util.ColorClone(col),
+          Util.ColorClone(col, 0.8),
           //Util.ColorClone(i.SurfaceColor),
           new RayRecursion.RayContribution(i, dir, importance)
           {
@@ -512,7 +555,6 @@ namespace FilipRechtorik
         //rr = new RayRecursion(new double[] { i.SurfaceColor[0] + wood[0], i.SurfaceColor[1] + wood[1], i.SurfaceColor[2] + wood[2] });
         rr = new RayRecursion(new double[] { col[0] + wood[0] * ip, col[1] + wood[1] * ip, col[2] + wood[2] * ip });
       }
-
 
       return 122L;
     }

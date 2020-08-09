@@ -1,4 +1,5 @@
 using FilipRechtorik;
+using System.Net;
 
 //////////////////////////////////////////////////
 // Rendering params.
@@ -79,16 +80,22 @@ Volume fuel = new Volume(50, 50, 50);
 fuel.SetSeed(10);
 fuel.CloudsRandomize(5);
 Fire f = new Fire(50, 50, 50, fuel);
+FireSimulation sim = new FireSimulation(f, fuel);
 
 //f.CloudsRandomize(5);
 //Volume f = new Volume(20, 20, 20);
 //f.CloudsRandomize(5);
 //f.PointsRandomize(0.3, 0.9, 2000);
 pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch){Kt = 0.1};
-f.SetAttribute(PropertyName.MATERIAL, pm);
-f.SetAttribute(PropertyName.RECURSION, (RecursionFunction) Fire.RecursionFunction);
-f.SetAttribute(PropertyName.NO_SHADOW, true);
-root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
+sim.SetAttribute(PropertyName.MATERIAL, pm);
+////f.SetAttribute(PropertyName.RECURSION, (RecursionFunction) Fire.RecursionFunction);
+////f.SetAttribute(PropertyName.NO_SHADOW, true);
+//root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
+root.InsertChild(sim, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
+
+//f.SetAttribute(PropertyName.MATERIAL, pm);
+//f.SetAttribute(PropertyName.NO_SHADOW, true);
+//f.InsertChild(fuel, Matrix4d.RotateY(0) * Matrix4d.Scale(1));
 
 //// Opaque sphere.
 //s = new Sphere();
