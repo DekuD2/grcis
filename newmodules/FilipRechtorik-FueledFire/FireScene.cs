@@ -84,30 +84,20 @@ int x = 50;
 int y = 100;
 int z = 50;
 
+// Create the fuel for our fire
 Volume fuel = new Volume(x, y, z);
-fuel.SetSeed(10);
-fuel.FuelRandomize(5, y / 2);
+fuel.SetSeed(10); // This is necessary to do because of a multi-threading bug (idk why but it doesn't always clone, sometimes it creates completely new instances and clones those)
+fuel.FuelRandomize(5, y / 4);
+// Create fire from our fuel
 Fire f = new Fire(x, y, z, fuel);
+// And join them in a fire simulation. This is a necessary step for fires that have fuel.
+// For fires that don't have fuel and instead have Fire.FuelType == { Floor | Point },
+// you can just insert the fire directly into the root node.
 FireSimulation sim = new FireSimulation(f, fuel);
 
-//f.CloudsRandomize(5);
-//Volume f = new Volume(20, 20, 20);
-//f.CloudsRandomize(5);
-//f.PointsRandomize(0.3, 0.9, 2000);
 pm = new PhongMaterial(new double[] {0.1, 0.1, 0.6}, 0.5, 0.5, 0.3, 16, sch){Kt = 0.1};
 sim.SetAttribute(PropertyName.MATERIAL, pm);
-////f.SetAttribute(PropertyName.RECURSION, (RecursionFunction) Fire.RecursionFunction);
-////f.SetAttribute(PropertyName.NO_SHADOW, true);
-//root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
 root.InsertChild(sim, Matrix4d.RotateY(0) * Matrix4d.Scale(2, 4, 2) * Matrix4d.CreateTranslation(0, 0.6, -0.5));
-
-//f.SetAttribute(PropertyName.MATERIAL, pm);
-//f.SetAttribute(PropertyName.NO_SHADOW, true);
-//f.InsertChild(fuel, Matrix4d.RotateY(0) * Matrix4d.Scale(1));
-
-//// Opaque sphere.
-//s = new Sphere();
-//root.InsertChild(s, Matrix4d.Scale(1.2) * Matrix4d.CreateTranslation(1.5, 0.2, 2.4));
 
 // Infinite plane with checker.
 Plane pl = new Plane();
