@@ -162,9 +162,9 @@ namespace FilipRechtorik
     const double smokeExponentialBase = 0.5;
 
     /// <summary>
-    /// How fast the fuel disappears
+    /// How fast the fuel disappears.
     /// </summary>
-    public double FuelBurnRate = 0.03;
+    public double FuelBurnRate = 0.05;
     /// <summary>
     /// How much fire does the fuel produce
     /// </summary>
@@ -385,7 +385,7 @@ namespace FilipRechtorik
           {
             var plasma = MathHelper.Clamp(volume[i,j,k], 0, 1);
             if (plasma > burnThreshold)
-              FuelVolume.BurnAt(i, j, k, plasma * burnPerSecond * AnimationStep);
+              FuelVolume.BurnAt(i, j, k, (double)plasma * burnPerSecond * AnimationStep);
           }
     }
 
