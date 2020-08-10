@@ -27,8 +27,8 @@ namespace FilipRechtorik
 {
   public static class PlasmaColor
   {
-    // Following links are not used...
-    // I just used lerp between red and green in the end...
+    // NOT USED
+    // This is what I wanted to do but didn't do in the end
     // https://en.wikipedia.org/wiki/Color_temperature#Calculation
     // https://en.wikipedia.org/wiki/CIE_1960_color_space
     // https://www.osapublishing.org/DirectPDFAccess/483495D3-02CF-CAB6-FA39786925B7B494_344803/oe-24-13-14066.pdf?da=1&id=344803&seq=0&mobile=no
@@ -102,7 +102,7 @@ namespace FilipRechtorik
   }
 
   [Serializable]
-  public class FireSimulation : DefaultSceneNode, ITimeDependent
+  public class FireSimulation : CSGInnerNode, ITimeDependent
   {
     Fire fire;
     Volume fuel;
@@ -120,12 +120,15 @@ namespace FilipRechtorik
       }
     }
 
-    public FireSimulation (Fire fire, Volume fuel)
+    public FireSimulation (Fire fire, Volume fuel) : base(SetOperation.Union)
     {
       this.fire = fire;
       this.fuel = fuel;
-      InsertChild(fire, Matrix4d.Identity);
+      // Shadows would be stupid because fire creates lits the fuel
+      fuel.SetAttribute(PropertyName.NO_SHADOW, true);
+      // Fuel must be before fire. Otherwise there is a rendering bug that makes edges look black.
       InsertChild(fuel, Matrix4d.Identity);
+      InsertChild(fire, Matrix4d.Identity);
     }
 
     public object Clone ()
@@ -137,6 +140,9 @@ namespace FilipRechtorik
       ShareCloneAttributes(copy);
       return copy;
     }
+
+    public int getSerial ()
+      => GetHashCode();
   }
 
   [Serializable]
@@ -144,10 +150,25 @@ namespace FilipRechtorik
   {
     public enum Fuel { Floor, Point, Volume };
 
+    /// <summary>
+    /// Legacy
+    /// </summary>
     public double PlasmaIntensity = 4; //17;
+    /// <summary>
+    /// Density of smoke
+    /// </summary>
     public double SmokeIntensity = 10;
     public double SamplingFrequency = 10;
     const double smokeExponentialBase = 0.5;
+
+    /// <summary>
+    /// How fast the fuel disappears
+    /// </summary>
+    public double FuelBurnRate = 0.03;
+    /// <summary>
+    /// How much fire does the fuel produce
+    /// </summary>
+    public double FuelPlasmaIntensity = 12;
 
     public Volume FuelVolume;
     public Fuel FuelType = Fuel.Point;
@@ -240,10 +261,6 @@ namespace FilipRechtorik
 
     public void AnimateTo (double time)
     {
-      // Idea:
-      // Simulate plasma values using the usual grid simulation
-      // But simulate smoke differently. Move it chaotically.
-      // Possibly even create another level for smoke that will be simulated differently.
       while (simulationTime < time)
       {
         simulationTime += AnimationStep;
@@ -254,7 +271,7 @@ namespace FilipRechtorik
             BurnFloor(1f);
             break;
           case Fuel.Volume:
-            BurnFuel(12, 0.3);
+            BurnFuel(FuelPlasmaIntensity, FuelBurnRate);
             break;
           default:
             BurnPoint(75f);
@@ -328,8 +345,26 @@ namespace FilipRechtorik
         FuelVolume.RadiusAt(i, j + 1, k) == 0 || FuelVolume.RadiusAt(i, j - 1, k) == 0 ||
         FuelVolume.RadiusAt(i, j, k + 1) == 0 || FuelVolume.RadiusAt(i, j, k - 1) == 0);
 
+      bool ExtendedEdge (int i, int j, int k)
+      {
+        if (FuelVolume.RadiusAt(i, j, k) <= 0)
+          return false;
+
+        for (int x = i - 1; x <= i + 1; x++)
+          for (int y = j - 1; y <= j + 1; y++)
+            for (int z = k - 1; z <= k + 1; z++)
+            {
+              // Skip the center
+              if (x == i && y == j && z == k)
+                continue;
+              if (FuelVolume.RadiusAt(x, y, z) == 0)
+                return true;
+            }
+        return false;
+      }
+
       bool Interior (int i, int j, int k)
-        => FuelVolume.RadiusAt(i, j, k) > 0 && !Edge(i, j, k);
+        => FuelVolume.RadiusAt(i, j, k) > 0 && !ExtendedEdge(i, j, k);
 
       // First create plasma from wood
       for (int i = 1; i < (Sx - 1); i++)
@@ -440,12 +475,10 @@ namespace FilipRechtorik
           point.X <= 0.5 && point.Y <= 0.5 && point.Z <= 0.5;
       }
 
-      // Idea for color calculating
-      //  Have a smoke factor starting at 0
-      //  When you sample value < plasmaThreshold, add it to smoke factor
-      //  When you sample value >= plasmaThreshold, compute it's color from gradient, apply smoke factor, add
-      //  Return smoke factor as .TextureCoord.X, return color as .SurfaceColor
-
+      // Have a smoke factor starting at 0
+      // When you sample value < plasmaThreshold, add it to smoke factor
+      // When you sample value >= plasmaThreshold, compute its color from gradient, apply smoke factor, add
+      // Return smoke factor as .TextureCoord.X, return color as .SurfaceColor
 
       Vector3d p = p0;
       double t = 0;
@@ -487,8 +520,6 @@ namespace FilipRechtorik
 
     public object Clone ()
     {
-      //Debug.WriteLine("Clone {");
-      //Debug.Indent();
       Volume fuel = (Volume)FuelVolume?.Clone();
       Fire copy = new Fire(Sx, Sy, Sz, fuel);
 
@@ -501,6 +532,8 @@ namespace FilipRechtorik
       copy.simulationTime = simulationTime;
       copy.wind = wind;
       copy.FuelType = FuelType;
+      copy.FuelPlasmaIntensity = FuelPlasmaIntensity;
+      copy.FuelBurnRate = FuelBurnRate;
 
       for (int i = 0; i < Sx; i++)
         for (int j = 0; j < Sy; j++)
@@ -511,21 +544,15 @@ namespace FilipRechtorik
       copy.seed = seed;
       copy.random = new Random(seed);
 
-      //Debug.Unindent();
-      //Debug.WriteLine("}");
       return copy;
     }
 
     public static long RecursionFunction (Intersection i, Vector3d dir, double importance, out RayRecursion rr)
     {
-      // What if I literally insert the wood inside the fire and then let a ray hit it?
       double plasma = i.TextureCoord.X / 100d;
       double ip = MathHelper.Clamp(1.4 - plasma, 0, 1);
       double smoke = MathHelper.Clamp(i.TextureCoord.Y, 0, 1);
       double fuelT = i.TangentU.X;
-
-      //plasma = 1d;
-      //fuelT = -1;
 
       double length = Math.Sqrt(i.SurfaceColor[0] * i.SurfaceColor[0] + i.SurfaceColor[1] * i.SurfaceColor[1] + i.SurfaceColor[2] * i.SurfaceColor[2]);
       double[] col = new double[] { i.SurfaceColor[0] / length, i.SurfaceColor[1] / length, i.SurfaceColor[2] / length };
@@ -534,27 +561,14 @@ namespace FilipRechtorik
       if (plasma == 0)
         col = new double[] { 0, 0, 0 };
 
-      if (fuelT == -1 || true)
-      {
-        rr = new RayRecursion(
-          //Util.ColorClone(col, 0.8),
-          Util.ColorClone(col, 0.8),
-          //Util.ColorClone(i.SurfaceColor),
-          new RayRecursion.RayContribution(i, dir, importance)
-          {
-            coefficient = new double[] { smoke, smoke, smoke }
-          });
-        //if (smoke < 0.7)
-        //  Debug.WriteLine(smoke);
-      }
-      else
-      {
-        double[] wood = new double[] { 59 / 255d, 37 / 255d, 14 / 255d };
-        //Debug.WriteLine(l2);
-        //rr = new RayRecursion(Util.ColorClone(col, 0.8));
-        //rr = new RayRecursion(new double[] { i.SurfaceColor[0] + wood[0], i.SurfaceColor[1] + wood[1], i.SurfaceColor[2] + wood[2] });
-        rr = new RayRecursion(new double[] { col[0] + wood[0] * ip, col[1] + wood[1] * ip, col[2] + wood[2] * ip });
-      }
+      // The color and smoke stopped counting after the ray hit the fuel inside
+      // Now we just let the ray continue and hit the wood that is a sibling of this node in the node graph
+      rr = new RayRecursion(
+        Util.ColorClone(col, 0.6),
+        new RayRecursion.RayContribution(i, dir, importance)
+        {
+          coefficient = new double[] { smoke, smoke, smoke }
+        });
 
       return 122L;
     }

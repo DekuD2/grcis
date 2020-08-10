@@ -34,6 +34,11 @@ namespace FilipRechtorik
     public float MinRadius = 0.1f;
     public float MaxRadius = 0.5f;
 
+    /// <summary>
+    /// Set this to false to disable the material being set inside the Intersect(...) function.
+    /// </summary>
+    public bool SpecialMaterial = true;
+
     const int blendRange = 1;
 
     public Volume (int sx, int sy, int sz) : base(sx, sy, sz) { }
@@ -293,9 +298,13 @@ namespace FilipRechtorik
             Front = true,
             NormalLocal = ApproximateNormal(currPoint),
             CoordLocal = currPoint,
-            Material = new PhongMaterial(new double[]{ 1, 0, 0 }, 0.3, 0.4, 0.3, 128), //currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5
-            SurfaceColor = new double[]{ currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5 }
           };
+
+          if (SpecialMaterial)
+          {
+            intersection.Material = new PhongMaterial(new double[] { 1, 0, 0 }, 0.3, 0.4, 0.3, 128);
+            intersection.SurfaceColor = new double[] { currPoint.X + 0.5, currPoint.Y + 0.5, currPoint.Z + 0.5 };
+          }
 
           result.AddLast(intersection);
           return true;
@@ -363,6 +372,35 @@ namespace FilipRechtorik
       inter.TextureCoord.Y = Math.Atan2(r, inter.CoordLocal.Z) / Math.PI;
     }
 
+    public void FuelRandomize (int numPoints = 15, int heightLimit = int.MaxValue)
+    {
+      Vector3[] points = new Vector3[numPoints];
+      for (int i = 0; i < numPoints; i++)
+        points[i] = new Vector3(random.Next(0, Sx), random.Next(0, Math.Min(Sy, heightLimit)), random.Next(0, Sz));
+
+      for (int i = 0; i < Sx; i++)
+        for (int j = 0; j < Sy; j++)
+          for (int k = 0; k < Sz; k++)
+          {
+            Vector3 curr = new Vector3(i, j, k);
+
+            // Find the distance to the closest point
+            float min = float.MaxValue;
+            for (int p = 0; p < numPoints; p++)
+            {
+              float dist = (curr - points[p]).LengthSquared * 0.1f / (float)maxDim;
+              if (dist < min)
+                min = dist;
+            }
+
+            if (min < 0.1)
+              Debug.WriteLine(min);
+            volume[i, j, k] = 1 - (float)Math.Sqrt(Math.Sqrt(min));
+          }
+
+      ClearEdges();
+    }
+
     public object Clone ()
     {
       Volume copy = new Volume(Sx, Sy, Sz);
@@ -372,6 +410,7 @@ namespace FilipRechtorik
       copy.Threshold = Threshold;
       copy.MinRadius = MinRadius;
       copy.MaxRadius = MaxRadius;
+      copy.SpecialMaterial = SpecialMaterial;
 
       for (int i = 0; i < Sx; i++)
         for (int j = 0; j < Sy; j++)

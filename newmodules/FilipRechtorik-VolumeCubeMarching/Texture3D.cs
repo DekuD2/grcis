@@ -126,19 +126,21 @@ namespace FilipRechtorik
     {
       Vector3[] points = new Vector3[numPoints];
       for (int i = 0; i < numPoints; i++)
-        points[i] = new Vector3((float)random.NextDouble(), (float)random.NextDouble(), (float)random.NextDouble());
+        //points[i] = new Vector3((float)random.NextDouble(), (float)random.NextDouble(), (float)random.NextDouble());
+        points[i] = new Vector3(random.Next(0, Sx), random.Next(0, Sy), random.Next(0, Sz));
 
       for (int i = 0; i < Sx; i++)
         for (int j = 0; j < Sy; j++)
           for (int k = 0; k < Sz; k++)
           {
-            Vector3 curr = new Vector3(i * ISx, j * ISy, k * ISz);
+            //Vector3 curr = new Vector3(i * ISx, j * ISy, k * ISz);
+            Vector3 curr = new Vector3(i, j, k);
 
             // Find the distance to the closest point
             float min = float.MaxValue;
             for (int p = 0; p < numPoints; p++)
             {
-              float dist = (curr - points[p]).LengthSquared;
+              float dist = (curr - points[p]).LengthSquared * 0.1f / (float)maxDim;
               if (dist < min)
                 min = dist;
             }

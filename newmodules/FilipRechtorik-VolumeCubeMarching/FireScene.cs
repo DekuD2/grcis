@@ -76,10 +76,15 @@ scene.Sources.Add(new PointLightSource(new Vector3d(-5.0, 4.0, -3.0), 1.2));
 // --- NODE DEFINITIONS ----------------------------------------------------
 
 // Transparent/mirror/diffuse sphere.
-Volume fuel = new Volume(50, 50, 50);
+
+int x = 50;
+int y = 100;
+int z = 50;
+
+Volume fuel = new Volume(x, y, z);
 fuel.SetSeed(10);
-fuel.CloudsRandomize(5);
-Fire f = new Fire(50, 50, 50, fuel);
+fuel.FuelRandomize(5, y / 2);
+Fire f = new Fire(x, y, z, fuel);
 FireSimulation sim = new FireSimulation(f, fuel);
 
 //f.CloudsRandomize(5);
@@ -91,7 +96,7 @@ sim.SetAttribute(PropertyName.MATERIAL, pm);
 ////f.SetAttribute(PropertyName.RECURSION, (RecursionFunction) Fire.RecursionFunction);
 ////f.SetAttribute(PropertyName.NO_SHADOW, true);
 //root.InsertChild(f, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
-root.InsertChild(sim, Matrix4d.RotateY(0) * Matrix4d.Scale(2));
+root.InsertChild(sim, Matrix4d.RotateY(0) * Matrix4d.Scale(2, 4, 2) * Matrix4d.CreateTranslation(0, 0.6, -0.5));
 
 //f.SetAttribute(PropertyName.MATERIAL, pm);
 //f.SetAttribute(PropertyName.NO_SHADOW, true);
